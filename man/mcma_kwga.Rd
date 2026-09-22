@@ -10,7 +10,8 @@ mcma_kwga(
   sp_grid = seq(0.6, 0.95, by = 0.025),
   bandwidth = NULL,
   prior_weights = NULL,
-  gold_column = "is_gold"
+  gold_column = "is_gold",
+  clamp_scoring = TRUE
 )
 }
 \arguments{
@@ -27,6 +28,11 @@ with \verb{$gold_draws} and \verb{$screen_draws} on the probability scale.}
 the number of valid grid points, or NULL for uniform).}
 
 \item{gold_column}{Name of the gold indicator column.}
+
+\item{clamp_scoring}{Logical. \code{TRUE} (default) scores the clamped
+Rogan-Gladen correction (original construction); \code{FALSE} scores the
+unclamped correction. The per-grid-point summary columns are always
+computed from the clamped values.}
 }
 \value{
 An S3 object of class \code{mcma_kwga}.
@@ -35,4 +41,13 @@ An S3 object of class \code{mcma_kwga}.
 Scores each (Se, Sp) pair by the agreement between the Rogan-Gladen-
 corrected screening posterior and the gold-standard posterior from the
 comparison model. Uses a draw-paired Gaussian kernel.
+}
+\details{
+By default the Rogan-Gladen-corrected screening prevalence is clamped to the
+unit interval before it is compared with the gold-standard draws, so an
+accuracy pair that implies a negative prevalence is scored as if it implied
+zero. With \code{clamp_scoring = FALSE} the unclamped value is scored instead, so
+such pairs are penalised by their full distance from the gold-standard
+draws. Pair that setting with joint resampling in \code{\link[=mcma_kwga_prevalence]{mcma_kwga_prevalence()}}
+(its default \code{resample = "auto"} does so automatically).
 }

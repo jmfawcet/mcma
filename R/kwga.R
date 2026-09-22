@@ -7,6 +7,14 @@
 #' corrected screening posterior and the gold-standard posterior from the
 #' comparison model. Uses a draw-paired Gaussian kernel.
 #'
+#' By default the Rogan-Gladen-corrected screening prevalence is clamped to the
+#' unit interval before it is compared with the gold-standard draws, so an
+#' accuracy pair that implies a negative prevalence is scored as if it implied
+#' zero. With `clamp_scoring = FALSE` the unclamped value is scored instead, so
+#' such pairs are penalised by their full distance from the gold-standard
+#' draws. Pair that setting with joint resampling in [mcma_kwga_prevalence()]
+#' (its default `resample = "auto"` does so automatically).
+#'
 #' @param fit_comparison A brmsfit from `mcma_fit_comparison()`, or a list
 #'   with `$gold_draws` and `$screen_draws` on the probability scale.
 #' @param se_grid Candidate Se values.
@@ -15,6 +23,10 @@
 #' @param prior_weights Optional prior weights for the grid (same length as
 #'   the number of valid grid points, or NULL for uniform).
 #' @param gold_column Name of the gold indicator column.
+#' @param clamp_scoring Logical. `TRUE` (default) scores the clamped
+#'   Rogan-Gladen correction (original construction); `FALSE` scores the
+#'   unclamped correction. The per-grid-point summary columns are always
+#'   computed from the clamped values.
 #' @return An S3 object of class `mcma_kwga`.
 #' @export
 mcma_kwga <- function(fit_comparison,
@@ -22,7 +34,8 @@ mcma_kwga <- function(fit_comparison,
                      sp_grid     = seq(0.60, 0.95, by = 0.025),
                      bandwidth   = NULL,
                      prior_weights = NULL,
-                     gold_column = "is_gold") {
+                     gold_column = "is_gold",
+                     clamp_scoring = TRUE) {
 
   # Compare corrected screening prevalence with interview prevalence over
   # candidate accuracy pairs. Agreement determines the relative kernel
@@ -86,14 +99,17 @@ mcma_kwga <- function(fit_comparison,
   gold_mat   <- matrix(gold_draws, nrow = n_draws, ncol = n_grid)
 
   # Rogan-Gladen correction per draw per grid point
-  corrected <- (screen_mat + sp_minus1) / denom_mat
-  corrected <- pmin(1, pmax(0, corrected))
+  corrected_raw <- (screen_mat + sp_minus1) / denom_mat
+  corrected_raw <- matrix(corrected_raw, nrow = n_draws, ncol = n_grid)
+  corrected <- pmin(1, pmax(0, corrected_raw))
   corrected <- matrix(corrected, nrow = n_draws, ncol = n_grid)
 
   # Small draw-paired differences receive high normal-kernel scores. These
   # scores measure agreement, not a fitted binomial likelihood.
   # Discrepancy and scoring
-  discrepancy  <- gold_mat - corrected
+  # With clamp_scoring = TRUE a pair implying a negative prevalence is scored as
+  # zero prevalence; with FALSE it is scored at its full (negative) distance.
+  discrepancy  <- gold_mat - (if (isTRUE(clamp_scoring)) corrected else corrected_raw)
   discrepancy  <- matrix(discrepancy, nrow = n_draws, ncol = n_grid)
   log_lik_mat  <- stats::dnorm(discrepancy, mean = 0, sd = bandwidth, log = TRUE)
   log_lik_mat  <- matrix(log_lik_mat, nrow = n_draws, ncol = n_grid)
@@ -119,6 +135,7 @@ mcma_kwga <- function(fit_comparison,
   # total of one; sort highest-weight pairs first.
   # --- Posterior weights ---
   grid$log_ml <- log_ml
+  grid$log_prior <- log_prior
   log_post <- log_ml + log_prior
   max_lp <- max(log_post)
   grid$weight <- exp(log_post - max_lp)
@@ -160,7 +177,8 @@ mcma_kwga <- function(fit_comparison,
     gold_draws   = gold_draws,
     screen_draws = screen_draws,
     bandwidth    = bandwidth,
-    gold_column  = gold_column
+    gold_column  = gold_column,
+    clamp_scoring = isTRUE(clamp_scoring)
   )
   class(out) <- c("mcma_kwga", "list")
   out
@@ -174,25 +192,36 @@ mcma_kwga <- function(fit_comparison,
 #'
 #' @param kwga An `mcma_kwga` object from `mcma_kwga()`.
 #' @param fit_comparison Optional comparison fit, or a list with `screen_draws`
-#'   on the probability scale. When supplied, its screening draws replace those
-#'   stored in `kwga`; NULL uses the stored draws. Grid weights remain those in
-#'   `kwga`, so normally supply the same fit used to construct that object.
+#'   (and, for joint resampling, `gold_draws`) on the probability scale. When
+#'   supplied, its draws replace those stored in `kwga`; NULL uses the stored
+#'   draws. Grid weights remain those in `kwga`, so normally supply the same fit
+#'   used to construct that object.
 #' @param mode `"analytic"` applies the Rogan-Gladen correction post hoc.
+#' @param resample `"independent"` (original construction) samples an accuracy
+#'   pair by its grid weight and, independently, a screening draw.
+#'   `"joint"` samples the (posterior draw, accuracy pair) combination with
+#'   probability proportional to prior weight times kernel score, so every
+#'   prevalence draw is conditioned on its agreement with the gold-standard
+#'   draws. `"auto"` (default) uses `"joint"` when `kwga` was built with
+#'   `clamp_scoring = FALSE` and `"independent"` otherwise.
 #' @param n_draws Number of Monte Carlo draws.
 #' @param seed Optional integer seed for reproducible Monte Carlo draws; the
 #'   global RNG state is restored on exit. Defaults to NULL (unseeded).
-#' @return A list with `$summary`, `$draws`, and `$weights`.
+#' @return A list with `$summary`, `$draws`, `$weights`, and `$resample` (the
+#'   scheme actually used).
 #' @export
 mcma_kwga_prevalence <- function(kwga,
                                 fit_comparison = NULL,
                                 mode     = c("analytic"),
                                 n_draws  = 4000,
-                                seed     = NULL) {
+                                seed     = NULL,
+                                resample = c("auto", "independent", "joint")) {
 
   # Generate corrected prevalence draws from the grid-weighted mixture. Each
   # draw combines one sampled accuracy pair with a screening prevalence draw.
 
   mode <- match.arg(mode)
+  resample <- match.arg(resample)
 
   # Use an optional local reproducibility seed and restore the previously
   # existing global random-number state on exit.
@@ -208,6 +237,8 @@ mcma_kwga_prevalence <- function(kwga,
 
   if (mode == "analytic") {
     screen_draws <- kwga$screen_draws
+    gold_draws   <- kwga$gold_draws
+
     if (!is.null(fit_comparison)) {
       # Use the supplied comparison rather than silently retaining old draws.
       if (inherits(fit_comparison, "brmsfit")) {
@@ -215,31 +246,64 @@ mcma_kwga_prevalence <- function(kwga,
         gold_column <- cfg$gold_column
         if (is.null(gold_column)) gold_column <- kwga$gold_column
         if (is.null(gold_column)) gold_column <- "is_gold"
-        screen_draws <- extract_gold_screen_diff(
+        gs <- extract_gold_screen_diff(
           fit_comparison, summary = FALSE, gold_column = gold_column
-        )$screen
+        )
+        screen_draws <- gs$screen
+        gold_draws   <- gs$gold
       } else if (is.list(fit_comparison)) {
         screen_draws <- fit_comparison$screen_draws
+        gold_draws   <- fit_comparison$gold_draws
       } else {
         stop("fit_comparison must be a brmsfit or a list with screen_draws.", call. = FALSE)
       }
     }
+
     .mcma_validate_probability(screen_draws, "screen_draws", length(screen_draws))
 
-    # Sample grid rows by weight
-    idx <- sample(
-      seq_len(nrow(grid)),
-      size    = n_draws,
-      replace = TRUE,
-      prob    = grid$weight
-    )
-    sampled <- grid[idx, ]
+    # "auto" pairs joint resampling with unclamped scoring and the original
+    # independent scheme with clamped scoring.
+    if (resample == "auto") {
+      resample <- if (isFALSE(kwga$clamp_scoring)) "joint" else "independent"
+    }
 
-    # For each sampled (Se, Sp), pick a random screening draw and correct
-    draw_idx <- sample(seq_along(screen_draws), size = n_draws, replace = TRUE)
-    p_screen <- screen_draws[draw_idx]
-    corrected <- (p_screen + sampled$sp - 1) / (sampled$se + sampled$sp - 1)
-    corrected <- pmin(1, pmax(0, corrected))
+    if (resample == "independent") {
+      # Sample grid rows by weight
+      idx <- sample(
+        seq_len(nrow(grid)),
+        size    = n_draws,
+        replace = TRUE,
+        prob    = grid$weight
+      )
+      sampled <- grid[idx, ]
+
+      # For each sampled (Se, Sp), pick a random screening draw and correct
+      draw_idx <- sample(seq_along(screen_draws), size = n_draws, replace = TRUE)
+      p_screen <- screen_draws[draw_idx]
+      corrected <- (p_screen + sampled$sp - 1) / (sampled$se + sampled$sp - 1)
+      corrected <- pmin(1, pmax(0, corrected))
+    } else {
+      # Joint resampling: pick (posterior draw, accuracy pair) together with
+      # probability proportional to prior weight x kernel score, scored the same
+      # way the grid weights were (clamped or unclamped), so each prevalence
+      # draw is conditioned on its agreement with the gold-standard draws.
+      if (is.null(gold_draws) || length(gold_draws) != length(screen_draws)) {
+        stop("Joint resampling needs gold_draws paired with screen_draws (same length).",
+             call. = FALSE)
+      }
+      .mcma_validate_probability(gold_draws, "gold_draws", length(gold_draws))
+      n_post <- length(screen_draws)
+      n_grid <- nrow(grid)
+      log_prior <- if (is.null(grid$log_prior)) rep(0, n_grid) else grid$log_prior
+      raw <- outer(screen_draws, grid$sp - 1, "+") /
+        matrix(grid$se + grid$sp - 1, nrow = n_post, ncol = n_grid, byrow = TRUE)
+      scored <- if (isFALSE(kwga$clamp_scoring)) raw else pmin(1, pmax(0, raw))
+      score <- stats::dnorm(gold_draws - scored, mean = 0, sd = kwga$bandwidth, log = TRUE) +
+        matrix(log_prior, nrow = n_post, ncol = n_grid, byrow = TRUE)
+      idx <- sample.int(n_post * n_grid, size = n_draws, replace = TRUE,
+                        prob = exp(score - max(score)))
+      corrected <- pmin(1, pmax(0, raw[idx]))
+    }
 
     # Measure weight concentration: equal weights over K pairs give K
     # effective pairs; one dominant pair gives about one.
@@ -259,7 +323,8 @@ mcma_kwga_prevalence <- function(kwga,
     return(list(
       summary = out_summary,
       draws   = corrected,
-      weights = grid
+      weights = grid,
+      resample = resample
     ))
   }
 }
@@ -277,6 +342,8 @@ print.mcma_kwga <- function(x, ...) {
   cat("Kernel-weighted grid averaging (KWGA) over the Se/Sp grid\n")
   cat(sprintf("  Grid size: %d valid points\n", nrow(x$grid)))
   cat(sprintf("  Bandwidth: %.4f\n", x$bandwidth))
+  cat(sprintf("  Scoring: %s\n",
+              if (isFALSE(x$clamp_scoring)) "unclamped correction" else "clamped correction"))
   cat(sprintf("  Top weight: %.4f at Se=%.3f, Sp=%.3f\n",
               x$grid$weight[1], x$grid$se[1], x$grid$sp[1]))
   cat("\nEstimates:\n")

@@ -9,16 +9,18 @@ mcma_kwga_prevalence(
   fit_comparison = NULL,
   mode = c("analytic"),
   n_draws = 4000,
-  seed = NULL
+  seed = NULL,
+  resample = c("auto", "independent", "joint")
 )
 }
 \arguments{
 \item{kwga}{An \code{mcma_kwga} object from \code{mcma_kwga()}.}
 
 \item{fit_comparison}{Optional comparison fit, or a list with \code{screen_draws}
-on the probability scale. When supplied, its screening draws replace those
-stored in \code{kwga}; NULL uses the stored draws. Grid weights remain those in
-\code{kwga}, so normally supply the same fit used to construct that object.}
+(and, for joint resampling, \code{gold_draws}) on the probability scale. When
+supplied, its draws replace those stored in \code{kwga}; NULL uses the stored
+draws. Grid weights remain those in \code{kwga}, so normally supply the same fit
+used to construct that object.}
 
 \item{mode}{\code{"analytic"} applies the Rogan-Gladen correction post hoc.}
 
@@ -26,9 +28,18 @@ stored in \code{kwga}; NULL uses the stored draws. Grid weights remain those in
 
 \item{seed}{Optional integer seed for reproducible Monte Carlo draws; the
 global RNG state is restored on exit. Defaults to NULL (unseeded).}
+
+\item{resample}{\code{"independent"} (original construction) samples an accuracy
+pair by its grid weight and, independently, a screening draw.
+\code{"joint"} samples the (posterior draw, accuracy pair) combination with
+probability proportional to prior weight times kernel score, so every
+prevalence draw is conditioned on its agreement with the gold-standard
+draws. \code{"auto"} (default) uses \code{"joint"} when \code{kwga} was built with
+\code{clamp_scoring = FALSE} and \code{"independent"} otherwise.}
 }
 \value{
-A list with \verb{$summary}, \verb{$draws}, and \verb{$weights}.
+A list with \verb{$summary}, \verb{$draws}, \verb{$weights}, and \verb{$resample} (the
+scheme actually used).
 }
 \description{
 Computes a kernel-weighted grid-averaged prevalence by sampling Se/Sp pairs according to
