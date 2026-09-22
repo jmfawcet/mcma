@@ -1,0 +1,40 @@
+Package: mcma
+Title: Bayesian Misclassification-Corrected Meta-Analysis
+Version: 0.1.0
+URL: https://github.com/jmfawcet/mcma
+Authors@R: c(
+    person("Jonathan M.", "Fawcett", role = c("aut", "cre"), email = "jfawcett@mun.ca",
+           comment = c(ORCID = "0000-0002-4248-5371")),
+    person("Jedidiah", "Whitridge", role = c("aut"),
+           comment = c(ORCID = "0000-0003-1237-4977"))
+  )
+Description: Implements the Bayesian misclassification-corrected meta-analysis
+    workflow. Wraps 'brms' to provide convenient functions for constructing
+    corrected prevalence models, specifying sensitivity/specificity priors from
+    external evidence, running sensitivity analyses, and estimating Se/Sp from
+    gold-standard data via discrete kernel-weighted grid averaging (KWGA) or joint modeling.
+License: MIT + file LICENSE
+Encoding: UTF-8
+Roxygen: list(markdown = TRUE)
+Depends:
+    R (>= 4.1.0)
+Imports:
+    brms (>= 2.20.0),
+    posterior,
+    stats,
+    rlang,
+    tibble,
+    dplyr,
+    tidyr,
+    purrr,
+    ggplot2,
+    ggExtra,
+    magrittr
+Suggests:
+    cmdstanr,
+    MASS,
+    testthat (>= 3.1.7),
+    knitr,
+    quarto
+VignetteBuilder: quarto
+Config/roxygen2/version: 8.0.0

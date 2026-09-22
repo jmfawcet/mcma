@@ -1,0 +1,25 @@
+citHeader("If you use mcma in your work, please cite both the companion paper and the package:")
+
+bibentry(
+  bibtype = "Unpublished",
+  key = "fawcett_mcma",
+  year = "2026",
+  title = "Bayesian meta-analysis of disorder prevalence with misclassification correction",
+  author = c(
+    person("Jonathan M.", "Fawcett"),
+    person("Jedidiah", "Whitridge"),
+    person("Franti\u0161ek", "Barto\u0161"),
+    person("Emily J.", "Fawcett")
+  ),
+  note = "Manuscript submitted for publication"
+)
+
+bibentry(
+  bibtype = "Manual",
+  key = "fawcett_whitridge_mcma",
+  title = "mcma: Bayesian Misclassification-Corrected Meta-Analysis",
+  author = c(person("Jonathan M.", "Fawcett"), person("Jedidiah", "Whitridge")),
+  year = "2026",
+  note = paste("R package version", meta$Version),
+  url = "https://github.com/jmfawcet/mcma"
+)

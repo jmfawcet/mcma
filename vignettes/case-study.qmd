@@ -1,0 +1,468 @@
+---
+title: "Misclassification-corrected prevalence meta-analysis: depression in public safety personnel"
+author: "The mcma package"
+date: today
+format:
+  html:
+    toc: true
+    toc-depth: 2
+    code-fold: false
+    df-print: kable
+    fig-width: 7
+    fig-height: 5
+vignette: >
+  %\VignetteIndexEntry{Case study: depression in public safety personnel}
+  %\VignetteEngine{quarto::html}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r}
+#| label: setup
+#| include: false
+# Each sensitivity grid now fits 36 models, matching the case-study script.
+# The Bayesian fits in this vignette each run 4 chains of 6,000 iterations with
+# adapt_delta = 0.9999, and each sensitivity grid fits 36 models. Rendering all
+# of that takes hours and needs cmdstanr/Stan, so code chunks are shown but NOT
+# executed during render (eval = FALSE). Analysis chunks also use purl = FALSE
+# so R CMD check skips them when running the extracted vignette script.
+# The numerical results quoted in the text
+# and shown in the `#>` output blocks are from the published analysis (White
+# et al., 2025 data; Fawcett, Whitridge, Bartoš & Fawcett). To run it yourself,
+# set eval = TRUE (and expect a long run on first build; fits are cached).
+# message = FALSE keeps the Stan sampler's per-iteration progress out of the
+# rendered file if you run the chunks (eval = TRUE).
+knitr::opts_chunk$set(collapse = TRUE, comment = "#>", eval = FALSE,
+                      message = FALSE)
+```
+
+## What this vignette demonstrates
+
+Prevalence meta-analyses routinely pool studies that used brief screening
+questionnaires with a smaller number that used "gold standard" diagnostic
+interviews. When a disorder is rare, imperfect specificity produces false
+positives among the large non-case population. These can outweigh the false
+negatives caused by imperfect sensitivity, inflating the estimated prevalence
+when screening and diagnostic studies are pooled naively.
+
+`mcma` (Misclassification-Corrected Meta-Analysis) embeds a Rogan–Gladen
+correction inside a Bayesian hierarchical model, propagating uncertainty in
+sensitivity (*Se*) and specificity (*Sp*) into the pooled estimate. This vignette
+walks through the package's recommended workflow on a real
+dataset - depression among public safety personnel (police, fire, paramedic,
+correctional, and communications workers) from White et al. (2025) - and
+reproduces the headline result of the accompanying paper:
+
+> A naive pooled prevalence of 12.2% falls to roughly 2.7% once
+> misclassification is modelled, converging with the gold-standard diagnostic
+> interviews and with general-population estimates of major depressive disorder.
+
+The workflow:
+
+1. **Assemble Se/Sp priors** for the screening instruments.
+2. **Estimate Se/Sp from the data** where gold-standard studies are available
+   (the joint model `M8`, plus a discrete kernel-weighted grid averaging (KWGA) diagnostic).
+3. **Run a sensitivity analysis** across a grid of *Se*/*Sp* prior centres.
+4. **Report multiple estimates** - naive, corrected, joint, and
+   gold-standard-only - and compare.
+
+## Setup
+
+```{r, purl = FALSE}
+#| label: libs
+# install.packages("remotes"); remotes::install_github("jmfawcet/mcma")
+library(mcma)
+library(dplyr)
+library(ggplot2)
+
+# Use cmdstanr if available (recommended for the identity-link models).
+options(brms.backend = "cmdstanr")
+
+PREV_CENTER <- 0.06   # prior centre on population MDD prevalence (~6%)
+```
+
+### Data
+
+The dataset is the depression prevalence from White et al.'s
+systematic review of mental health in public safety personnel, hosted on the
+project's OSF page (<https://osf.io/9y2xj/>). It has one row per prevalence
+estimate, with the observed prevalence (`DepPrev`), the analytic sample size, the
+instrument (`DepressionTool`), and the threshold/criterion used (`Depthreshold`).
+A study is treated as gold standard when it classified cases with a
+diagnostic interview (`DepressionTool2 == "diagnostic"`). The chunk below downloads it
+directly from OSF (the anxiety and PTSD datasets are at
+<https://osf.io/7s8b2/> and <https://osf.io/qwb25/>).
+
+```{r, purl = FALSE}
+#| label: data
+# Download the depression dataset from OSF (not bundled with the package).
+osf_csv <- file.path(tempdir(), "depression_alldata.csv")
+
+if (!file.exists(osf_csv))
+  download.file("https://osf.io/download/9y2xj/", osf_csv,
+                mode = "wb", quiet = TRUE)
+
+dat <- read.csv(osf_csv) %>%
+  mutate(
+    y     = round(DepPrev * analyticsamplesize),  # observed cases
+    n     = analyticsamplesize,                    # sample size
+    es_id = factor(row_number()),                  # effect-size identifier
+    # Fix one mislabeled PHQ9 *before* building measure ids so it groups correctly.
+    DepressionTool = recode(DepressionTool, PHQ = "PHQ9"),
+    cutoff_type = case_when(
+      Depthreshold == "DSMcrit"                           ~ "diagnostic",
+      Depthreshold == "gpnorm"                            ~ "norm_referenced",
+      Depthreshold == "notreported" | is.na(Depthreshold) ~ "unknown",
+      TRUE                                                ~ "self_report_numeric"
+    ),
+    is_gold        = DepressionTool2 == "diagnostic",  # gold = diagnostic interview
+    measure_cutoff = factor(paste(DepressionTool, Depthreshold, sep = "_"))
+  ) %>%
+  filter(catquality != "low")                      # drop low-quality estimates, as did White et al.
+
+# Give every screening instrument by cutoff a measure id; gold studies share "gold".
+measure_map <- dat %>%
+  filter(!is_gold) %>%
+  distinct(measure_cutoff) %>%
+  arrange(measure_cutoff) %>%
+  mutate(measure_id = as.character(row_number()))
+
+dat <- dat %>%
+  left_join(measure_map, by = "measure_cutoff") %>%
+  mutate(measure_id = ifelse(is_gold, "gold", measure_id))
+
+cat(sprintf(
+  "Estimates: %d  |  Gold: %d  |  Screen: %d  |  Distinct measures: %d | Distinct measure + cutoff combinations: %d\n",
+  nrow(dat), sum(dat$is_gold), sum(!dat$is_gold), n_distinct(dat$DepressionTool), n_distinct(dat$measure_cutoff)
+))
+```
+
+```
+#> Estimates: 89 | Gold: 10 | Screen: 79
+```
+
+Ten of the 89 estimates used diagnostic interviews; the remaining 79 used a
+variety of screening instruments and cut-offs.
+
+## Step 1 - Assemble Se/Sp priors
+
+`mcma_priors()` builds a prior table with one row per measure. Where
+measure-specific diagnostic-accuracy data exist, set each `se`/`sp` centre
+directly; here - to demonstrate the realistic case where only a field-level
+"typical" accuracy is known - we give every screening measure the same
+weakly-informative centre (Se = Sp = 0.80) with effective sample size
+`kappa = 100`. Gold-standard measures are flagged with `is_gold = TRUE` and
+`NA` accuracy (the model fixes them to near-perfect classification).
+
+```{r, purl = FALSE}
+#| label: priors
+screen_measures <- sort(unique(dat$measure_id[!dat$is_gold]))
+all_measures    <- c(screen_measures, "gold")
+
+base_priors <- mcma_priors(
+  measure_id = all_measures,
+  se      = c(rep(0.80, length(screen_measures)), NA),
+  sp      = c(rep(0.80, length(screen_measures)), NA),
+  kappa   = c(rep(100,  length(screen_measures)), NA),
+  is_gold = c(rep(FALSE, length(screen_measures)), TRUE)
+)
+
+base_priors
+```
+
+::: callout-tip
+## Be conservative on specificity for rare disorders
+The single most consequential prior is *Sp*: at low prevalence the observed
+case count is dominated by the false-positive rate `(1 − Sp)`. Over-estimating
+*Sp* produces upward bias in corrected prevalence. When in doubt, err toward a
+lower, wider *Sp* prior and lean on the Step 3 sensitivity analysis.
+:::
+
+## Step 2 - Estimate *Se*/*Sp* from the gold-standard studies
+
+When some studies used diagnostic interviews, the diagnostic accuracy of the
+screening studies can be partially identified from the data. `mcma` offers two
+routes.
+
+### Joint model (**M8**)
+
+`mcma_fit_joint()` estimates prevalence, *Se*, and *Sp* simultaneously, collapsing
+all screening studies into a single accuracy class and fixing the gold-standard
+studies to near-perfect classification. We use the bounded parameterization
+(*Se*, *Sp* ∈ [0.5, 1)), which keeps the Rogan–Gladen correction away from its
+singularity, with wide priors so the data drive the *Se*/*Sp* estimates.
+
+```{r, purl = FALSE}
+#| label: m8
+fit_m8 <- mcma_fit_joint(
+  data            = dat,
+  gold_column     = "is_gold",
+  prev_center     = PREV_CENTER,
+  se_prior_center = 0.80, sp_prior_center = 0.80,
+  se_prior_sd     = 1.0,  sp_prior_sd     = 1.0,
+  prev_re         = ~ (1 | es_id),
+  sesp_re         = ~ (1 | es_id),
+  correlated_re   = TRUE,
+  bounded         = TRUE
+)
+
+m8_prev <- extract_prevalence(fit_m8)
+m8_sesp <- extract_sesp(fit_m8, level = "global", bounded = TRUE)
+```
+
+```
+#> M8 prevalence : ~2.7%  (95% CI roughly 1–6%)
+#> M8 sensitivity: 0.85 [0.67, 0.97]   (prior-dominated; see note)
+#> M8 specificity: 0.89 [0.85, 0.93]
+```
+
+The joint model recovers *Sp* sharply (~0.89) but leaves *Se* close to its prior - 
+expected behaviour, because at low prevalence the data carry little information 
+about *Se* (almost everyone is a true non-case). `plot_joint_sesp()` shows the 
+joint posterior together with the iso-correction line of *Se*/*Sp* pairs compatible 
+with the observed gold–screen gap:
+
+```{r, purl = FALSE}
+#| label: m8-plot
+#| fig-cap: "Joint posterior of implied sensitivity and specificity (M8)."
+plot_joint_sesp(fit_m8, show_marginals = TRUE, bounded = TRUE, n_draws = 20000)
+```
+
+### Three-level structure (studies within reports)
+
+Several reports contribute more than one prevalence estimate. Adding a
+report-level random effect (`refid`) above the per-estimate effect gives a
+three-level structure; the corrected prevalence is essentially unchanged.
+
+```{r, purl = FALSE}
+#| label: m8-3level
+fit_m8_tl <- mcma_fit_joint(
+  data          = dat,
+  gold_column   = "is_gold",
+  prev_center   = PREV_CENTER,
+  prev_re       = ~ (1 | es_id) + (1 | refid),
+  sesp_re       = ~ (1 | es_id) + (1 | refid),
+  correlated_re = TRUE,
+  bounded       = TRUE
+)
+
+extract_prevalence(fit_m8_tl)
+extract_sesp(fit_m8_tl, level = "global")
+```
+
+To predict latent prevalence in a new study while holding the report effect at
+zero, supply `newdata` and retain only the study term in `re_formula`. This
+interval includes study heterogeneity but excludes report heterogeneity and
+binomial sampling noise; it differs from the pooled estimate above.
+
+```{r, purl = FALSE}
+#| label: m8-3level-prediction
+
+new_study <- fit_m8_tl$data[1, , drop = FALSE]
+new_study$es_id <- "new_study"
+
+# Draw a new study effect; the omitted report effect is fixed at zero.
+extract_prevalence(
+  fit_m8_tl,
+  newdata             = new_study,
+  re_formula          = ~ (1 | es_id),
+  allow_new_levels    = TRUE,
+  sample_new_levels   = "gaussian",
+  prediction_interval = TRUE
+)
+```
+
+### Discrete kernel-weighted grid averaging (KWGA)
+
+As a cross-check, `mcma_kwga()` scores a grid of *Se*/*Sp* pairs by how well a
+Rogan–Gladen correction of the screening posterior reproduces the
+gold standard posterior. It is fast and useful diagnostically, but does not
+propagate uncertainty as fully as **M8**, so treat it as a sanity check only.
+
+```{r, purl = FALSE}
+#| label: kwga
+scr_rate <- with(dat, sum(y[!is_gold]) / sum(n[!is_gold]))
+fit_comp <- mcma_fit_comparison(
+  data = dat, gold_column = "is_gold",
+  gold_prev_center = PREV_CENTER, scr_prev_center = scr_rate,
+  prev_re = ~ (1 | es_id)
+)
+
+kwga      <- mcma_kwga(fit_comp,
+                       se_grid = seq(0.70, 1, by = 0.025),
+                       sp_grid = seq(0.70, 1, by = 0.025))
+kwga_prev <- mcma_kwga_prevalence(kwga, fit_comparison = fit_comp, n_draws = 4000)
+kwga
+```
+
+```
+#> Discrete KWGA: Sp ≈ 0.875 (Se weakly identified) - consistent with M8.
+```
+
+## Step 3 - Sensitivity analysis
+
+Because the corrected estimate depends on the assumed *Se*/*Sp*, the workflow's core
+safeguard is a prior sensitivity analysis: re-fit the corrected model across
+a grid of *Se*/*Sp* prior centres and visualise how the pooled prevalence moves.
+`mcma_sensitivity()` fits one model per grid cell (cached to `model_dir`).
+
+```{r, purl = FALSE}
+#| label: sens
+se_vals <- seq(0.70, 0.95, by = 0.05)
+sp_vals <- seq(0.70, 0.95, by = 0.05)
+
+sens <- mcma_sensitivity(
+  data        = dat,
+  priors      = base_priors,
+  se_grid     = se_vals,
+  sp_grid     = sp_vals,
+  prev_center = PREV_CENTER,
+  bounded     = TRUE,
+  prev_re     = ~ (1 | es_id),
+  sesp_re     = ~ (1 | es_id),
+  model_dir   = "models/sensitivity_case"
+)
+
+plot(sens, type = "heatmap", metric = "prev_mean")
+```
+
+A companion grid, `mcma_sensitivity_comparison()`, fits a gold vs screen model
+at each cell so you can read off the difference between the corrected
+screening estimate and the gold-standard estimate. Pass the sampler settings
+explicitly so the grid uses the same rigorous control as the other models:
+
+```{r, purl = FALSE}
+#| label: sens-comp
+sens_comp <- mcma_sensitivity_comparison(
+  data        = dat,
+  priors      = base_priors,
+  se_grid     = se_vals,
+  sp_grid     = sp_vals,
+  prev_center = PREV_CENTER,
+  bounded     = TRUE,
+  prev_re     = ~ (1 | es_id),
+  sesp_re     = ~ (1 | es_id),
+  gold_column = "is_gold",
+  model_dir   = "models/sensitivity_comp_case",
+  chains = 4, cores = 4, iter = 6000, warmup = 3000,
+  adapt_delta = 0.9999, max_treedepth = 20
+)
+
+plot(sens_comp, type = "difference", include_cell_estimates = TRUE)
+```
+
+Across the plausible region (*Se*/*Sp* roughly 0.70–0.90) the corrected prevalence
+is stable and low, and the corrected screening estimate is statistically
+indistinguishable from the gold-standard estimate. The estimate only climbs once
+*Sp* is pushed above ~0.90 - higher than is typical for depression screeners at
+standard cut-offs.
+
+## Step 4 - Report multiple estimates
+
+Finally, report and compare the full set: the naive benchmark (**M1**), the
+gold-standard-only anchor, the joint model (**M8**), the corrected model
+with priors centred at the **M8** estimates (**M6**), and the KWGA diagnostic.
+
+```{r, purl = FALSE}
+#| label: report-fits
+fit_naive <- mcma_fit(dat, priors = NULL, prev_center = PREV_CENTER,
+                      prev_re = ~ (1 | es_id))
+
+fit_gold  <- mcma_fit(filter(dat, is_gold), priors = NULL,
+                      prev_center = PREV_CENTER, prev_re = ~ (1 | es_id))
+
+# Centre the corrected model's Se/Sp priors at the M8-implied values.
+m6_priors <- update(base_priors, se = m8_sesp$se_mean, sp = m8_sesp$sp_mean)
+
+fit_m6 <- mcma_fit(
+  data = dat, priors = m6_priors, prev_center = PREV_CENTER,
+  prev_re = ~ (1 | es_id), sesp_re = ~ (1 | es_id),
+  correlated_re = TRUE, bounded = TRUE
+)
+```
+
+```{r, purl = FALSE}
+#| label: report-table
+prev_raw <- bind_rows(
+  extract_prevalence(fit_naive) %>% mutate(model = "M1 (Naive)"),
+  extract_prevalence(fit_gold)  %>% mutate(model = "Gold-only"),
+  extract_prevalence(fit_m8)    %>% mutate(model = "M8 (Joint)"),
+  extract_prevalence(fit_m6)    %>% mutate(model = "M6 (M8-informed)"),
+  tibble(model = "KWGA (analytic)",
+         mean = kwga_prev$summary$mean,  median = kwga_prev$summary$median,
+         l95  = kwga_prev$summary$ci_lb, u95    = kwga_prev$summary$ci_ub)
+)
+
+prev_table <- prev_raw %>%
+  transmute(model,
+            `Prevalence (%)` = sprintf("%.1f", mean * 100),
+            `95% CI` = sprintf("[%.1f, %.1f]", l95 * 100, u95 * 100))
+prev_table
+```
+
+```
+#> model              Prevalence (%)
+#> M1 (Naive)         12.2
+#> Gold-only           2.5
+#> M8 (Joint)          2.7
+#> M6 (M8-informed)    2.2
+#> KWGA (analytic)     1.6
+#>
+#> The 95% CIs of the corrected models overlap one another and the gold-only
+#> anchor in every case, and none of them overlaps the naive estimate.
+```
+
+The corrected point estimates range from approximately 1.6% to 2.7%, compared
+with the naive 12.2%. Their 95% intervals overlap one another and the
+gold-standard-only anchor, and include values within the published
+general-population diagnostic interview range for MDD (≈3.1–5.4%). The KWGA
+distribution has a median of zero and a 95% interval of approximately 0–8%.
+A forest plot makes the gap between the naive estimate and everything else clear:
+
+```{r, purl = FALSE}
+#| label: forest
+#| fig-cap: "Pooled depression prevalence by model, with 95% intervals."
+model_order <- c("M1 (Naive)", "Gold-only", "KWGA (analytic)",
+                 "M8 (Joint)", "M6 (M8-informed)")
+
+prev_raw %>%
+  mutate(model = factor(model, levels = rev(model_order))) %>%
+  ggplot(aes(x = mean * 100, y = model)) +
+  geom_errorbarh(aes(xmin = l95 * 100, xmax = u95 * 100), height = 0.18) +
+  geom_point(size = 2.6) +
+  labs(x = "Prevalence (%)", y = NULL) +
+  theme_minimal(base_size = 12)
+```
+
+
+## Diagnostics
+
+Always check standard MCMC diagnostics and posterior predictive fit alongside the
+substantive output.
+
+```{r, purl = FALSE}
+#| label: diagnostics
+mcma_convergence(M1 = fit_naive, Gold = fit_gold, Comparison = fit_comp,
+                 M8 = fit_m8, M8_3level = fit_m8_tl, M6 = fit_m6)
+
+# Posterior predictive checks: mean discrepancy ≈ 0, variance ratio ≈ 1,
+# Bayesian p-values ≈ 0.5 indicate adequate fit.
+bind_rows(
+  mcma_ppc(fit_naive) %>% mutate(model = "M1 (Naive)"),
+  mcma_ppc(fit_gold)  %>% mutate(model = "Gold-only"),
+  mcma_ppc(fit_m8)    %>% mutate(model = "M8 (Joint)"),
+  mcma_ppc(fit_m6)    %>% mutate(model = "M6 (M8-informed)")
+)
+```
+
+## References
+
+- Fawcett, Whitridge, Bartoš & Fawcett. *Bayesian meta-analysis of disorder
+  prevalence with misclassification correction.*
+- White et al. (2025). Depression in public safety personnel (case-study data).
+- Rogan & Gladen (1978). Estimating prevalence from the results of a screening test.
+
+```{r}
+#| label: session
+#| eval: true
+sessionInfo()
+```
