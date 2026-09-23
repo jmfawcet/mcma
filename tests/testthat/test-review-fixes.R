@@ -171,7 +171,7 @@ testthat::test_that("convergence summaries retain mixed and repeated model names
 
 testthat::test_that("KWGA uses an explicitly supplied comparison without changing weights", {
   original <- list(gold_draws = c(.04, .05, .06), screen_draws = c(.20, .21, .22))
-  kwga <- mcma_kwga(original, se_grid = .85, sp_grid = .9)
+  kwga <- mcma_kwga(original, se_grid = .85, sp_grid = .9, clamp_scoring = TRUE)
   stored <- mcma_kwga_prevalence(kwga, seed = 1)
   same <- mcma_kwga_prevalence(kwga, fit_comparison = original, seed = 1)
   testthat::expect_identical(stored, same)

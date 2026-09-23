@@ -11,7 +11,7 @@ mcma_kwga(
   bandwidth = NULL,
   prior_weights = NULL,
   gold_column = "is_gold",
-  clamp_scoring = TRUE
+  clamp_scoring = FALSE
 )
 }
 \arguments{
@@ -29,10 +29,10 @@ the number of valid grid points, or NULL for uniform).}
 
 \item{gold_column}{Name of the gold indicator column.}
 
-\item{clamp_scoring}{Logical. \code{TRUE} (default) scores the clamped
-Rogan-Gladen correction (original construction); \code{FALSE} scores the
-unclamped correction. The per-grid-point summary columns are always
-computed from the clamped values.}
+\item{clamp_scoring}{Logical. \code{FALSE} (default) scores the unclamped
+Rogan-Gladen correction; \code{TRUE} scores the clamped correction. The
+per-grid-point summary columns are always computed from the clamped
+values.}
 }
 \value{
 An S3 object of class \code{mcma_kwga}.
@@ -43,11 +43,12 @@ corrected screening posterior and the gold-standard posterior from the
 comparison model. Uses a draw-paired Gaussian kernel.
 }
 \details{
-By default the Rogan-Gladen-corrected screening prevalence is clamped to the
-unit interval before it is compared with the gold-standard draws, so an
-accuracy pair that implies a negative prevalence is scored as if it implied
-zero. With \code{clamp_scoring = FALSE} the unclamped value is scored instead, so
-such pairs are penalised by their full distance from the gold-standard
-draws. Pair that setting with joint resampling in \code{\link[=mcma_kwga_prevalence]{mcma_kwga_prevalence()}}
-(its default \code{resample = "auto"} does so automatically).
+By default (\code{clamp_scoring = FALSE}) the unclamped Rogan-Gladen-corrected
+screening prevalence is compared with the gold-standard draws, so an
+accuracy pair that implies a negative prevalence is penalised by its full
+distance from those draws. With \code{clamp_scoring = TRUE} the correction is
+clamped to the unit interval before scoring, so such a pair is scored as if
+it implied zero prevalence; this pins the KWGA prevalence interval at zero
+and is retained only for comparison. \code{\link[=mcma_kwga_prevalence]{mcma_kwga_prevalence()}} pairs the
+default with joint resampling of draws and accuracy pairs.
 }

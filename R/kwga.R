@@ -7,13 +7,14 @@
 #' corrected screening posterior and the gold-standard posterior from the
 #' comparison model. Uses a draw-paired Gaussian kernel.
 #'
-#' By default the Rogan-Gladen-corrected screening prevalence is clamped to the
-#' unit interval before it is compared with the gold-standard draws, so an
-#' accuracy pair that implies a negative prevalence is scored as if it implied
-#' zero. With `clamp_scoring = FALSE` the unclamped value is scored instead, so
-#' such pairs are penalised by their full distance from the gold-standard
-#' draws. Pair that setting with joint resampling in [mcma_kwga_prevalence()]
-#' (its default `resample = "auto"` does so automatically).
+#' By default (`clamp_scoring = FALSE`) the unclamped Rogan-Gladen-corrected
+#' screening prevalence is compared with the gold-standard draws, so an
+#' accuracy pair that implies a negative prevalence is penalised by its full
+#' distance from those draws. With `clamp_scoring = TRUE` the correction is
+#' clamped to the unit interval before scoring, so such a pair is scored as if
+#' it implied zero prevalence; this pins the KWGA prevalence interval at zero
+#' and is retained only for comparison. [mcma_kwga_prevalence()] pairs the
+#' default with joint resampling of draws and accuracy pairs.
 #'
 #' @param fit_comparison A brmsfit from `mcma_fit_comparison()`, or a list
 #'   with `$gold_draws` and `$screen_draws` on the probability scale.
@@ -23,10 +24,10 @@
 #' @param prior_weights Optional prior weights for the grid (same length as
 #'   the number of valid grid points, or NULL for uniform).
 #' @param gold_column Name of the gold indicator column.
-#' @param clamp_scoring Logical. `TRUE` (default) scores the clamped
-#'   Rogan-Gladen correction (original construction); `FALSE` scores the
-#'   unclamped correction. The per-grid-point summary columns are always
-#'   computed from the clamped values.
+#' @param clamp_scoring Logical. `FALSE` (default) scores the unclamped
+#'   Rogan-Gladen correction; `TRUE` scores the clamped correction. The
+#'   per-grid-point summary columns are always computed from the clamped
+#'   values.
 #' @return An S3 object of class `mcma_kwga`.
 #' @export
 mcma_kwga <- function(fit_comparison,
@@ -35,7 +36,7 @@ mcma_kwga <- function(fit_comparison,
                      bandwidth   = NULL,
                      prior_weights = NULL,
                      gold_column = "is_gold",
-                     clamp_scoring = TRUE) {
+                     clamp_scoring = FALSE) {
 
   # Compare corrected screening prevalence with interview prevalence over
   # candidate accuracy pairs. Agreement determines the relative kernel
@@ -197,8 +198,8 @@ mcma_kwga <- function(fit_comparison,
 #'   draws. Grid weights remain those in `kwga`, so normally supply the same fit
 #'   used to construct that object.
 #' @param mode `"analytic"` applies the Rogan-Gladen correction post hoc.
-#' @param resample `"independent"` (original construction) samples an accuracy
-#'   pair by its grid weight and, independently, a screening draw.
+#' @param resample `"independent"` samples an accuracy pair by its grid weight
+#'   and, independently, a screening draw.
 #'   `"joint"` samples the (posterior draw, accuracy pair) combination with
 #'   probability proportional to prior weight times kernel score, so every
 #'   prevalence draw is conditioned on its agreement with the gold-standard

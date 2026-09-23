@@ -10,9 +10,9 @@ kwga_test_grid <- list(se = seq(0.70, 0.975, by = 0.025), sp = seq(0.70, 0.975, 
 
 testthat::test_that("clamp_scoring = FALSE penalises pairs that imply a negative prevalence", {
   draws <- kwga_test_draws()
-  clamped   <- mcma_kwga(draws, se_grid = kwga_test_grid$se, sp_grid = kwga_test_grid$sp)
-  unclamped <- mcma_kwga(draws, se_grid = kwga_test_grid$se, sp_grid = kwga_test_grid$sp,
-                         clamp_scoring = FALSE)
+  clamped   <- mcma_kwga(draws, se_grid = kwga_test_grid$se, sp_grid = kwga_test_grid$sp,
+                         clamp_scoring = TRUE)
+  unclamped <- mcma_kwga(draws, se_grid = kwga_test_grid$se, sp_grid = kwga_test_grid$sp)
   testthat::expect_true(clamped$clamp_scoring)
   testthat::expect_false(unclamped$clamp_scoring)
   testthat::expect_true("log_prior" %in% names(unclamped$grid))
@@ -33,9 +33,9 @@ testthat::test_that("clamp_scoring = FALSE penalises pairs that imply a negative
 
 testthat::test_that("resample = 'auto' follows clamp_scoring and joint draws are conditioned", {
   draws <- kwga_test_draws()
-  clamped   <- mcma_kwga(draws, se_grid = kwga_test_grid$se, sp_grid = kwga_test_grid$sp)
-  unclamped <- mcma_kwga(draws, se_grid = kwga_test_grid$se, sp_grid = kwga_test_grid$sp,
-                         clamp_scoring = FALSE)
+  clamped   <- mcma_kwga(draws, se_grid = kwga_test_grid$se, sp_grid = kwga_test_grid$sp,
+                         clamp_scoring = TRUE)
+  unclamped <- mcma_kwga(draws, se_grid = kwga_test_grid$se, sp_grid = kwga_test_grid$sp)
   ind <- mcma_kwga_prevalence(clamped, seed = 1)
   jnt <- mcma_kwga_prevalence(unclamped, seed = 1)
   testthat::expect_equal(ind$resample, "independent")

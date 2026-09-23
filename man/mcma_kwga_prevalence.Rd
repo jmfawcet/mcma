@@ -29,8 +29,8 @@ used to construct that object.}
 \item{seed}{Optional integer seed for reproducible Monte Carlo draws; the
 global RNG state is restored on exit. Defaults to NULL (unseeded).}
 
-\item{resample}{\code{"independent"} (original construction) samples an accuracy
-pair by its grid weight and, independently, a screening draw.
+\item{resample}{\code{"independent"} samples an accuracy pair by its grid weight
+and, independently, a screening draw.
 \code{"joint"} samples the (posterior draw, accuracy pair) combination with
 probability proportional to prior weight times kernel score, so every
 prevalence draw is conditioned on its agreement with the gold-standard

@@ -273,10 +273,12 @@ extract_prevalence(
 
 ### Discrete kernel-weighted grid averaging (KWGA)
 
-As a cross-check, `mcma_kwga()` scores a grid of *Se*/*Sp* pairs by how well a
-Rogan–Gladen correction of the screening posterior reproduces the
-gold standard posterior. It is fast and useful diagnostically, but does not
-propagate uncertainty as fully as **M8**, so treat it as a sanity check only.
+As a cross-check, `mcma_kwga()` scores a grid of *Se*/*Sp* pairs by how well the
+unclamped Rogan–Gladen correction of the screening posterior agrees with the
+gold-standard posterior. Posterior draws and accuracy pairs are resampled jointly;
+the resulting prevalence draws are bounded to 0–1. It is fast and useful
+diagnostically, but does not propagate uncertainty as fully as **M8**, so treat it
+as a sanity check only.
 
 ```{r, purl = FALSE}
 #| label: kwga
@@ -288,9 +290,11 @@ fit_comp <- mcma_fit_comparison(
 )
 
 kwga      <- mcma_kwga(fit_comp,
-                       se_grid = seq(0.70, 1, by = 0.025),
-                       sp_grid = seq(0.70, 1, by = 0.025))
-kwga_prev <- mcma_kwga_prevalence(kwga, fit_comparison = fit_comp, n_draws = 4000)
+                       se_grid = seq(0.70, 0.975, by = 0.025),
+                       sp_grid = seq(0.70, 0.975, by = 0.025),
+                       clamp_scoring = FALSE)
+kwga_prev <- mcma_kwga_prevalence(kwga, fit_comparison = fit_comp, n_draws = 4000,
+                                  resample = "joint", seed = 12318238)
 kwga
 ```
 
@@ -405,17 +409,18 @@ prev_table
 #> Gold-only           2.5
 #> M8 (Joint)          2.7
 #> M6 (M8-informed)    2.2
-#> KWGA (analytic)     1.6
+#> KWGA (analytic)     2.5
 #>
 #> The 95% CIs of the corrected models overlap one another and the gold-only
 #> anchor in every case, and none of them overlaps the naive estimate.
 ```
 
-The corrected point estimates range from approximately 1.6% to 2.7%, compared
+The corrected point estimates range from approximately 2.2% to 2.7%, compared
 with the naive 12.2%. Their 95% intervals overlap one another and the
 gold-standard-only anchor, and include values within the published
 general-population diagnostic interview range for MDD (≈3.1–5.4%). The KWGA
-distribution has a median of zero and a 95% interval of approximately 0–8%.
+distribution has a mean of 2.52%, a median of 2.45%, and a 95% interval of
+approximately 0.16–5.30%.
 A forest plot makes the gap between the naive estimate and everything else clear:
 
 ```{r, purl = FALSE}
