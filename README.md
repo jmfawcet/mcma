@@ -152,7 +152,7 @@ If you use `mcma` in your work, please cite both the companion paper and the pac
 
 - Fawcett, J. M., Whitridge, J., Bartoš, F., & Fawcett, E. J. *Bayesian meta-analysis of disorder prevalence with misclassification correction.* Manuscript submitted for publication.
 
-- Fawcett, J. M., & Whitridge, J. (2026). *mcma: Bayesian Misclassification-Corrected Meta-Analysis* (Version 0.1.0) [R package]. https://github.com/jmfawcet/mcma
+- Fawcett, J. M., & Whitridge, J. (2026). *mcma: Bayesian Misclassification-Corrected Meta-Analysis* (Version 0.1.1) [R package]. https://github.com/jmfawcet/mcma
 
 ## License
 

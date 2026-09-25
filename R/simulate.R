@@ -252,11 +252,6 @@ mcma_sim_repair <- function(sim_data,
 
     for (f in bad_files) {
 
-      # Copy the old result to a backup directory before replacing it; the
-      # original input data are reused.
-      # Move bad file
-      file.copy(f, file.path(cor_dir, basename(f)), overwrite = TRUE)
-
       res <- readRDS(f)
       dat <- res$data
 
@@ -270,8 +265,26 @@ mcma_sim_repair <- function(sim_data,
         NULL
       })
 
+      # Keep the current result and backup after a failed fit, so the next
+      # cycle can still find and retry this replicate.
+      if (is.null(new_result)) next
+
       res$result <- new_result
-      saveRDS(res, file = f)
+
+      # Finish writing beside the original before backing it up and replacing
+      # it. A failed write or rename leaves the current result in place.
+      tmp_file <- tempfile(pattern = ".mcma_repair_", tmpdir = dirname(f))
+      tryCatch({
+        saveRDS(res, file = tmp_file)
+        if (!file.copy(f, file.path(cor_dir, basename(f)), overwrite = TRUE)) {
+          stop("Could not back up ", f, "; the current result was kept.")
+        }
+        if (!file.rename(tmp_file, f)) {
+          stop("Could not replace ", f, "; the current result was kept.")
+        }
+      }, finally = {
+        if (file.exists(tmp_file)) unlink(tmp_file)
+      })
     }
   }
 }
