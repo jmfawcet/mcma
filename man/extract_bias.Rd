@@ -16,7 +16,7 @@ draws of each term (\code{NULL} for a term without a prior).}
 }
 \value{
 A tibble with one row per term (\code{c}, \code{o}) giving \code{mode}
-(\"none\", \"fixed\" or \"prior\"), the prior string, and summary
+("none", "fixed" or "prior"), the prior string, and summary
 statistics, or a list of draws when \code{summary = FALSE}.
 }
 \description{

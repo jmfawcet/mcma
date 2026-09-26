@@ -10,13 +10,14 @@ mcma_sensitivity(
   se_grid,
   sp_grid,
   prev_center,
-  bounded = FALSE,
+  bounded = TRUE,
   prev_re = ~(1 | es_id),
   sesp_re = ~(1 | es_id),
   correlated_re = TRUE,
   measure_col = "measure_id",
-  model_dir = "models/sensitivity/",
+  model_dir = file.path(tempdir(), "mcma_sensitivity"),
   rerun = FALSE,
+  file_refit = if (rerun) "always" else "never",
   ...
 )
 }
@@ -31,7 +32,8 @@ mcma_sensitivity(
 
 \item{prev_center}{Prevalence prior centre (probability scale).}
 
-\item{bounded}{Logical; whether to use bounded parameterization.}
+\item{bounded}{Logical; if TRUE (default), uses the bounded parameterization
+(Se, Sp in [0.5, 1)) used throughout the paper.}
 
 \item{prev_re}{Prevalence random effects formula.}
 
@@ -41,11 +43,16 @@ mcma_sensitivity(
 
 \item{measure_col}{Measure identifier column.}
 
-\item{model_dir}{Directory for caching fitted models.}
+\item{model_dir}{Directory for caching fitted models. Defaults to a
+session-specific temporary directory; supply a persistent path to reuse
+fits across sessions, or NULL to disable caching.}
 
 \item{rerun}{Logical; if \code{TRUE}, refit and overwrite cached grid models even
 when a cached fit already exists (sets brms \code{file_refit = "always"}).
 Default \code{FALSE} reuses any cached fits.}
+
+\item{file_refit}{Passed to \code{brms::brm()}. Defaults to \code{"always"} when
+\code{rerun = TRUE} and \code{"never"} otherwise.}
 
 \item{...}{Additional arguments passed to \code{mcma_fit()}.}
 }

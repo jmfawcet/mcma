@@ -34,7 +34,7 @@ map_to_inner <- function(p, eps = 1e-4) {
 #'   and is included for legacy purposes.
 #' @return Numeric scalar: the prior SD on the (inner) logit scale.
 #' @export
-prior_sd_from_kappa <- function(p, kappa, bounded = FALSE,
+prior_sd_from_kappa <- function(p, kappa, bounded = TRUE,
                                 sd_method = c("chain_rule", "simple")) {
 
   # Translate a probability-scale prior and its effective sample size into an
@@ -327,7 +327,7 @@ print.mcma_priors <- function(x, ...) {
 #' @export
 as_brms_prior <- function(priors,
                           prev_center,
-                          bounded          = FALSE,
+                          bounded          = TRUE,
                           prev_prior_sd    = 1.5,
                           tau_prior_sd     = 1.0,
                           sesp_re_sd       = 0.5,

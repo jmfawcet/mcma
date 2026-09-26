@@ -6,7 +6,7 @@
 #' Returns the `brms::bf()` object that `mcma_fit()` would construct, without
 #' fitting the model. Useful for inspection, debugging, or manual modification.
 #'
-#' @param bounded Logical; if TRUE, uses Se = 0.5 + 0.5 * inv_logit(eta).
+#' @param bounded Logical; if TRUE (default), uses Se = 0.5 + 0.5 * inv_logit(eta).
 #' @param prev_re One-sided formula for prevalence random effects, e.g.,
 #'   `~ (1 | es_id)`. Set to NULL to omit.
 #' @param sesp_re One-sided formula for Se/Sp random effects. Set to NULL
@@ -22,7 +22,7 @@
 #'   `pi ~ 0 + is_gold` for separate gold/screen intercepts.
 #' @return A brms `bf()` formula object.
 #' @export
-mcma_formula <- function(bounded       = FALSE,
+mcma_formula <- function(bounded       = TRUE,
                          prev_re       = ~ (1 | es_id),
                          sesp_re       = ~ (1 | es_id),
                          correlated_re = TRUE,
@@ -129,7 +129,8 @@ mcma_formula <- function(bounded       = FALSE,
 #' @param moderators One-sided formula for moderator fixed effects.
 #' @param sesp_re One-sided formula for Se/Sp random effects.
 #' @param correlated_re Logical; if TRUE, correlates RE across submodels.
-#' @param bounded Logical; if TRUE, uses bounded parameterization.
+#' @param bounded Logical; if TRUE (default), uses the bounded parameterization
+#'   (Se, Sp in [0.5, 1)) used throughout the paper.
 #' @param measure_col Column name for the measure identifier.
 #' @param iter Total iterations per chain.
 #' @param warmup Warmup iterations per chain.
@@ -157,7 +158,7 @@ mcma_fit <- function(data,
                      moderators    = NULL,
                      sesp_re       = ~ (1 | es_id),
                      correlated_re = TRUE,
-                     bounded       = FALSE,
+                     bounded       = TRUE,
                      sd_method = "chain_rule",
                      measure_col   = "measure_id",
                      iter          = 6000,

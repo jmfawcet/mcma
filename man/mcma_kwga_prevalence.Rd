@@ -7,7 +7,6 @@
 mcma_kwga_prevalence(
   kwga,
   fit_comparison = NULL,
-  mode = c("analytic"),
   n_draws = 4000,
   seed = NULL,
   resample = c("auto", "independent", "joint")
@@ -21,8 +20,6 @@ mcma_kwga_prevalence(
 supplied, its draws replace those stored in \code{kwga}; NULL uses the stored
 draws. Grid weights remain those in \code{kwga}, so normally supply the same fit
 used to construct that object.}
-
-\item{mode}{\code{"analytic"} applies the Rogan-Gladen correction post hoc.}
 
 \item{n_draws}{Number of Monte Carlo draws.}
 
@@ -38,10 +35,13 @@ draws. \code{"auto"} (default) uses \code{"joint"} when \code{kwga} was built wi
 \code{clamp_scoring = FALSE} and \code{"independent"} otherwise.}
 }
 \value{
-A list with \verb{$summary}, \verb{$draws}, \verb{$weights}, and \verb{$resample} (the
-scheme actually used).
+A list with \verb{$summary} (mean, median, 95\% interval, SD and
+\code{n_effective_pairs}, the effective number of grid pairs carrying weight),
+\verb{$draws}, \verb{$weights}, and \verb{$resample} (the scheme actually used).
 }
 \description{
-Computes a kernel-weighted grid-averaged prevalence by sampling Se/Sp pairs according to
-their posterior weights and applying the Rogan-Gladen correction.
+Computes a kernel-weighted grid-averaged prevalence by resampling accuracy
+pairs from the grid together with posterior draws of the screening
+prevalence (jointly by default; see \code{resample}) and applying the
+Rogan-Gladen correction to each resampled pair.
 }

@@ -10,6 +10,20 @@
 * `mcma_kwga()` records the scoring version in its result and in `print()`;
   `mcma_kwga_prevalence()` returns the resampling used and accepts an
   optional `seed`.
+* `mcma_kwga_prevalence()` drops the unused `mode` argument and reports
+  `n_effective_pairs` (previously `n_effective_models`).
+* `bounded = TRUE` is now the default in `mcma_fit()`, `mcma_sensitivity()`,
+  `mcma_sensitivity_comparison()` and `mcma_formula()`, matching
+  `mcma_fit_joint()` and the analyses in the paper.
+* `prior_sd_from_kappa()`, `as_brms_prior()` and `plot()` for `mcma_priors`
+  objects also default to `bounded = TRUE`, so the priors they report or draw
+  are the ones `mcma_fit()` uses.
+* `mcma_sensitivity_comparison()` uses the same sampler defaults (`chains`,
+  `cores`, `backend`, `step_size`) as the other fitters. Both sensitivity
+  functions cache to a temporary directory unless `model_dir` is supplied, and
+  expose `file_refit`.
+* `mcma_sim_repair()` writes each refit to a temporary file and keeps the
+  current result if the refit fails or cannot be saved.
 * New tests for the KWGA scoring and resampling options; case-study vignette
   updated to the corrected estimator.
 

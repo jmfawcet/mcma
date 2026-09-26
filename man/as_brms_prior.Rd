@@ -7,7 +7,7 @@
 as_brms_prior(
   priors,
   prev_center,
-  bounded = FALSE,
+  bounded = TRUE,
   prev_prior_sd = 1.5,
   tau_prior_sd = 1,
   sesp_re_sd = 0.5,

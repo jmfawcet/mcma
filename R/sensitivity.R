@@ -13,15 +13,20 @@
 #' @param se_grid Numeric vector of Se values.
 #' @param sp_grid Numeric vector of Sp values.
 #' @param prev_center Prevalence prior centre (probability scale).
-#' @param bounded Logical; whether to use bounded parameterization.
+#' @param bounded Logical; if TRUE (default), uses the bounded parameterization
+#'   (Se, Sp in [0.5, 1)) used throughout the paper.
 #' @param prev_re Prevalence random effects formula.
 #' @param sesp_re Se/Sp random effects formula.
 #' @param correlated_re Logical; whether to correlate random effects.
 #' @param measure_col Measure identifier column.
-#' @param model_dir Directory for caching fitted models.
+#' @param model_dir Directory for caching fitted models. Defaults to a
+#'   session-specific temporary directory; supply a persistent path to reuse
+#'   fits across sessions, or NULL to disable caching.
 #' @param rerun Logical; if `TRUE`, refit and overwrite cached grid models even
 #'   when a cached fit already exists (sets brms `file_refit = "always"`).
 #'   Default `FALSE` reuses any cached fits.
+#' @param file_refit Passed to `brms::brm()`. Defaults to `"always"` when
+#'   `rerun = TRUE` and `"never"` otherwise.
 #' @param ... Additional arguments passed to `mcma_fit()`.
 #' @return An S3 object of class `mcma_sensitivity`.
 #' @export
@@ -30,13 +35,14 @@ mcma_sensitivity <- function(data,
                              se_grid,
                              sp_grid,
                              prev_center,
-                             bounded       = FALSE,
+                             bounded       = TRUE,
                              prev_re       = ~ (1 | es_id),
                              sesp_re       = ~ (1 | es_id),
                              correlated_re = TRUE,
                              measure_col   = "measure_id",
-                             model_dir     = "models/sensitivity/",
+                             model_dir     = file.path(tempdir(), "mcma_sensitivity"),
                              rerun         = FALSE,
+                             file_refit    = if (rerun) "always" else "never",
                              ...) {
 
   # Repeat the corrected fit over candidate prior centres. Each grid row
@@ -91,7 +97,7 @@ mcma_sensitivity <- function(data,
         correlated_re = correlated_re,
         measure_col   = measure_col,
         file          = file_path,
-        file_refit    = if (rerun) "always" else "never",
+        file_refit    = file_refit,
         ...
       )
 
@@ -200,20 +206,25 @@ mcma_sensitivity_comparison <- function(data,
                                         se_grid,
                                         sp_grid,
                                         prev_center,
-                                        bounded       = FALSE,
+                                        bounded       = TRUE,
                                         prev_re       = ~ (1 | es_id),
                                         sesp_re       = ~ (1 | es_id),
                                         correlated_re = TRUE,
                                         measure_col   = "measure_id",
                                         gold_column   = "is_gold",
                                         study_col     = "es_id",
-                                        model_dir     = "models/sensitivity_comp/",
+                                        model_dir     = file.path(tempdir(), "mcma_sensitivity_comp"),
                                         adapt_delta = 0.9999,
                                         max_treedepth = 20,
                                         iter = 6000,
                                         warmup = floor(iter / 2),
+                                        chains = 4,
+                                        cores = 4,
+                                        backend = "cmdstanr",
+                                        step_size = NULL,
                                         refresh = 50,
                                         rerun = FALSE,
+                                        file_refit = if (rerun) "always" else "never",
                                         ...) {
 
   # At each prior setting, estimate separate corrected interview and
@@ -294,14 +305,14 @@ mcma_sensitivity_comparison <- function(data,
         family  = stats::binomial(link = "identity"),
         prior   = brms_prior,
         file    = file_path,
-        file_refit = if (rerun) "always" else "never",
+        file_refit = file_refit,
         refresh = refresh,
-        control = list(
-          adapt_delta = adapt_delta,
-          max_treedepth = max_treedepth
-        ),
-        iter = iter,
-        warmup=warmup,
+        control = .mcma_sampler_control(adapt_delta, max_treedepth, step_size, backend),
+        iter    = iter,
+        warmup  = warmup,
+        chains  = chains,
+        cores   = cores,
+        backend = backend,
         ...
       )
 

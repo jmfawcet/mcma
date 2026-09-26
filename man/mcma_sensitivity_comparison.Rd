@@ -10,20 +10,25 @@ mcma_sensitivity_comparison(
   se_grid,
   sp_grid,
   prev_center,
-  bounded = FALSE,
+  bounded = TRUE,
   prev_re = ~(1 | es_id),
   sesp_re = ~(1 | es_id),
   correlated_re = TRUE,
   measure_col = "measure_id",
   gold_column = "is_gold",
   study_col = "es_id",
-  model_dir = "models/sensitivity_comp/",
+  model_dir = file.path(tempdir(), "mcma_sensitivity_comp"),
   adapt_delta = 0.9999,
   max_treedepth = 20,
   iter = 6000,
   warmup = floor(iter/2),
+  chains = 4,
+  cores = 4,
+  backend = "cmdstanr",
+  step_size = NULL,
   refresh = 50,
   rerun = FALSE,
+  file_refit = if (rerun) "always" else "never",
   ...
 )
 }
@@ -38,7 +43,8 @@ mcma_sensitivity_comparison(
 
 \item{prev_center}{Prevalence prior centre (probability scale).}
 
-\item{bounded}{Logical; whether to use bounded parameterization.}
+\item{bounded}{Logical; if TRUE (default), uses the bounded parameterization
+(Se, Sp in [0.5, 1)) used throughout the paper.}
 
 \item{prev_re}{Prevalence random effects formula.}
 
@@ -53,7 +59,9 @@ mcma_sensitivity_comparison(
 \item{study_col}{Column used by the default prevalence and accuracy
 random-effects formulas. Explicitly supplied formulas are used unchanged.}
 
-\item{model_dir}{Directory for caching fitted models.}
+\item{model_dir}{Directory for caching fitted models. Defaults to a
+session-specific temporary directory; supply a persistent path to reuse
+fits across sessions, or NULL to disable caching.}
 
 \item{adapt_delta}{Target acceptance rate.}
 
@@ -63,11 +71,22 @@ random-effects formulas. Explicitly supplied formulas are used unchanged.}
 
 \item{warmup}{Warmup iterations per chain.}
 
+\item{chains}{Number of MCMC chains.}
+
+\item{cores}{Number of cores.}
+
+\item{backend}{brms backend.}
+
+\item{step_size}{Optional initial sampler step size; NULL lets Stan choose it.}
+
 \item{refresh}{Iteration interval for progress printing (0 = silent).}
 
 \item{rerun}{Logical; if \code{TRUE}, refit and overwrite cached grid models even
 when a cached fit already exists (sets brms \code{file_refit = "always"}).
 Default \code{FALSE} reuses any cached fits.}
+
+\item{file_refit}{Passed to \code{brms::brm()}. Defaults to \code{"always"} when
+\code{rerun = TRUE} and \code{"never"} otherwise.}
 
 \item{...}{Additional arguments passed to \code{brms::brm()} at each grid point.}
 }

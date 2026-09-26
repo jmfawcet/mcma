@@ -7,7 +7,7 @@
 prior_sd_from_kappa(
   p,
   kappa,
-  bounded = FALSE,
+  bounded = TRUE,
   sd_method = c("chain_rule", "simple")
 )
 }

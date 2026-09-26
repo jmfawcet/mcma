@@ -12,7 +12,7 @@ mcma_fit(
   moderators = NULL,
   sesp_re = ~(1 | es_id),
   correlated_re = TRUE,
-  bounded = FALSE,
+  bounded = TRUE,
   sd_method = "chain_rule",
   measure_col = "measure_id",
   iter = 6000,
@@ -45,7 +45,8 @@ for instruments absent from data are ignored with a warning.}
 
 \item{correlated_re}{Logical; if TRUE, correlates RE across submodels.}
 
-\item{bounded}{Logical; if TRUE, uses bounded parameterization.}
+\item{bounded}{Logical; if TRUE (default), uses the bounded parameterization
+(Se, Sp in [0.5, 1)) used throughout the paper.}
 
 \item{sd_method}{Method for converting accuracy-prior uncertainty to the
 fitted scale when \code{bounded = TRUE}. \code{"chain_rule"} propagates the

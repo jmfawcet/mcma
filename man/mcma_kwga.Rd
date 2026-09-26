@@ -22,7 +22,8 @@ with \verb{$gold_draws} and \verb{$screen_draws} on the probability scale.}
 
 \item{sp_grid}{Candidate Sp values.}
 
-\item{bandwidth}{Kernel bandwidth. Defaults to the SD of gold draws.}
+\item{bandwidth}{Kernel bandwidth. Defaults to the SD of the gold draws,
+or 0.02 when that SD is not positive and finite.}
 
 \item{prior_weights}{Optional prior weights for the grid (same length as
 the number of valid grid points, or NULL for uniform).}

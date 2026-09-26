@@ -829,7 +829,7 @@ extract_gold_screen_diff <- function(fit,
 #'   draws of each term (`NULL` for a term without a prior).
 #' @param probs Quantile probabilities for the CI bounds.
 #' @return A tibble with one row per term (`c`, `o`) giving `mode`
-#'   (\"none\", \"fixed\" or \"prior\"), the prior string, and summary
+#'   ("none", "fixed" or "prior"), the prior string, and summary
 #'   statistics, or a list of draws when `summary = FALSE`.
 #' @export
 extract_bias <- function(fit, summary = TRUE, probs = c(0.025, 0.975)) {

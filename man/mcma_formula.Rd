@@ -5,7 +5,7 @@
 \title{Build the brms nonlinear formula}
 \usage{
 mcma_formula(
-  bounded = FALSE,
+  bounded = TRUE,
   prev_re = ~(1 | es_id),
   sesp_re = ~(1 | es_id),
   correlated_re = TRUE,
@@ -16,7 +16,7 @@ mcma_formula(
 )
 }
 \arguments{
-\item{bounded}{Logical; if TRUE, uses Se = 0.5 + 0.5 * inv_logit(eta).}
+\item{bounded}{Logical; if TRUE (default), uses Se = 0.5 + 0.5 * inv_logit(eta).}
 
 \item{prev_re}{One-sided formula for prevalence random effects, e.g.,
 \code{~ (1 | es_id)}. Set to NULL to omit.}

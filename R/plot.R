@@ -16,7 +16,7 @@
 #' @return A ggplot object.
 #' @export
 plot.mcma_priors <- function(x,
-                             bounded     = FALSE,
+                             bounded     = TRUE,
                              prev_center = NULL,
                              prev_sd     = 1.5,
                              n_samples   = 10000,

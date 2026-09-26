@@ -1,6 +1,6 @@
 ---
 title: "Misclassification-corrected prevalence meta-analysis: depression in public safety personnel"
-author: "The mcma package"
+author: "Jonathan M. Fawcett and Jedidiah Whitridge"
 date: today
 format:
   html:
@@ -19,18 +19,14 @@ vignette: >
 ```{r}
 #| label: setup
 #| include: false
-# Each sensitivity grid now fits 36 models, matching the case-study script.
-# The Bayesian fits in this vignette each run 4 chains of 6,000 iterations with
-# adapt_delta = 0.9999, and each sensitivity grid fits 36 models. Rendering all
-# of that takes hours and needs cmdstanr/Stan, so code chunks are shown but NOT
-# executed during render (eval = FALSE). Analysis chunks also use purl = FALSE
-# so R CMD check skips them when running the extracted vignette script.
-# The numerical results quoted in the text
-# and shown in the `#>` output blocks are from the published analysis (White
-# et al., 2025 data; Fawcett, Whitridge, Bartoš & Fawcett). To run it yourself,
-# set eval = TRUE (and expect a long run on first build; fits are cached).
-# message = FALSE keeps the Stan sampler's per-iteration progress out of the
-# rendered file if you run the chunks (eval = TRUE).
+# Code chunks are shown but not run during render (eval = FALSE): the fits use
+# 4 chains of 20,000 iterations (5,000 warm-up, adapt_delta = 0.9999) and the
+# two sensitivity grids fit 36 models each, which takes hours and needs
+# CmdStan. Analysis chunks also use purl = FALSE so R CMD check skips them.
+# The `#>` output blocks and the numbers quoted in the text are the output of
+# this code run on the fits reported in the accompanying paper (White et al.,
+# 2025 data). To run it yourself, set eval = TRUE. message = FALSE keeps the
+# sampler's progress out of the rendered file if you do.
 knitr::opts_chunk$set(collapse = TRUE, comment = "#>", eval = FALSE,
                       message = FALSE)
 ```
@@ -78,6 +74,8 @@ library(ggplot2)
 options(brms.backend = "cmdstanr")
 
 PREV_CENTER <- 0.06   # prior centre on population MDD prevalence (~6%)
+ITER        <- 20000  # iterations per chain
+WARMUP      <- 5000   # warm-up iterations per chain
 ```
 
 ### Data
@@ -137,7 +135,7 @@ cat(sprintf(
 ```
 
 ```
-#> Estimates: 89 | Gold: 10 | Screen: 79
+#> Estimates: 89  |  Gold: 10  |  Screen: 79  |  Distinct measures: 26 | Distinct measure + cutoff combinations: 40
 ```
 
 Ten of the 89 estimates used diagnostic interviews; the remaining 79 used a
@@ -202,17 +200,29 @@ fit_m8 <- mcma_fit_joint(
   prev_re         = ~ (1 | es_id),
   sesp_re         = ~ (1 | es_id),
   correlated_re   = TRUE,
-  bounded         = TRUE
+  bounded         = TRUE,
+  iter            = ITER,
+  warmup          = WARMUP
 )
 
 m8_prev <- extract_prevalence(fit_m8)
 m8_sesp <- extract_sesp(fit_m8, level = "global", bounded = TRUE)
+m8_prev
+print(m8_sesp, width = Inf)
 ```
 
 ```
-#> M8 prevalence : ~2.7%  (95% CI roughly 1–6%)
-#> M8 sensitivity: 0.85 [0.67, 0.97]   (prior-dominated; see note)
-#> M8 specificity: 0.89 [0.85, 0.93]
+#> # A tibble: 1 × 5
+#>     mean median     sd     l95    u95
+#>    <dbl>  <dbl>  <dbl>   <dbl>  <dbl>
+#> 1 0.0266 0.0246 0.0123 0.00844 0.0559
+#> # A tibble: 1 × 9
+#>   measure_id se_mean se_median se_ci_lb se_ci_ub sp_mean sp_median sp_ci_lb
+#>   <chr>        <dbl>     <dbl>    <dbl>    <dbl>   <dbl>     <dbl>    <dbl>
+#> 1 global       0.846     0.856    0.672    0.966   0.888     0.887    0.848
+#>   sp_ci_ub
+#>      <dbl>
+#> 1    0.930
 ```
 
 The joint model recovers *Sp* sharply (~0.89) but leaves *Se* close to its prior - 
@@ -242,7 +252,9 @@ fit_m8_tl <- mcma_fit_joint(
   prev_re       = ~ (1 | es_id) + (1 | refid),
   sesp_re       = ~ (1 | es_id) + (1 | refid),
   correlated_re = TRUE,
-  bounded       = TRUE
+  bounded       = TRUE,
+  iter          = ITER,
+  warmup        = WARMUP
 )
 
 extract_prevalence(fit_m8_tl)
@@ -286,7 +298,8 @@ scr_rate <- with(dat, sum(y[!is_gold]) / sum(n[!is_gold]))
 fit_comp <- mcma_fit_comparison(
   data = dat, gold_column = "is_gold",
   gold_prev_center = PREV_CENTER, scr_prev_center = scr_rate,
-  prev_re = ~ (1 | es_id)
+  prev_re = ~ (1 | es_id),
+  iter = ITER, warmup = WARMUP
 )
 
 kwga      <- mcma_kwga(fit_comp,
@@ -296,10 +309,28 @@ kwga      <- mcma_kwga(fit_comp,
 kwga_prev <- mcma_kwga_prevalence(kwga, fit_comparison = fit_comp, n_draws = 4000,
                                   resample = "joint", seed = 12318238)
 kwga
+kwga_prev$summary
 ```
 
 ```
-#> Discrete KWGA: Sp ≈ 0.875 (Se weakly identified) - consistent with M8.
+#> Kernel-weighted grid averaging (KWGA) over the Se/Sp grid
+#>   Grid size: 144 valid points
+#>   Bandwidth: 0.0091
+#>   Scoring: unclamped correction
+#>   Top weight: 0.0518 at Se=0.975, Sp=0.875
+#> 
+#> Estimates:
+#> # A tibble: 4 × 3
+#>   method             se    sp
+#>   <chr>           <dbl> <dbl>
+#> 1 joint_map       0.975 0.875
+#> 2 marginal_map    0.975 0.875
+#> 3 weighted_mean   0.848 0.872
+#> 4 weighted_median 0.85  0.875
+#> # A tibble: 1 × 6
+#>     mean median   ci_lb  ci_ub     sd n_effective_pairs
+#>    <dbl>  <dbl>   <dbl>  <dbl>  <dbl>             <dbl>
+#> 1 0.0252 0.0245 0.00156 0.0530 0.0129              30.7
 ```
 
 ## Step 3 - Sensitivity analysis
@@ -323,7 +354,9 @@ sens <- mcma_sensitivity(
   bounded     = TRUE,
   prev_re     = ~ (1 | es_id),
   sesp_re     = ~ (1 | es_id),
-  model_dir   = "models/sensitivity_case"
+  model_dir   = "models/sensitivity_case",
+  iter        = ITER,
+  warmup      = WARMUP
 )
 
 plot(sens, type = "heatmap", metric = "prev_mean")
@@ -331,8 +364,8 @@ plot(sens, type = "heatmap", metric = "prev_mean")
 
 A companion grid, `mcma_sensitivity_comparison()`, fits a gold vs screen model
 at each cell so you can read off the difference between the corrected
-screening estimate and the gold-standard estimate. Pass the sampler settings
-explicitly so the grid uses the same rigorous control as the other models:
+screening estimate and the gold-standard estimate. It uses the same sampler
+settings as the other models:
 
 ```{r, purl = FALSE}
 #| label: sens-comp
@@ -347,8 +380,8 @@ sens_comp <- mcma_sensitivity_comparison(
   sesp_re     = ~ (1 | es_id),
   gold_column = "is_gold",
   model_dir   = "models/sensitivity_comp_case",
-  chains = 4, cores = 4, iter = 6000, warmup = 3000,
-  adapt_delta = 0.9999, max_treedepth = 20
+  iter        = ITER,
+  warmup      = WARMUP
 )
 
 plot(sens_comp, type = "difference", include_cell_estimates = TRUE)
@@ -369,10 +402,11 @@ with priors centred at the **M8** estimates (**M6**), and the KWGA diagnostic.
 ```{r, purl = FALSE}
 #| label: report-fits
 fit_naive <- mcma_fit(dat, priors = NULL, prev_center = PREV_CENTER,
-                      prev_re = ~ (1 | es_id))
+                      prev_re = ~ (1 | es_id), iter = ITER, warmup = WARMUP)
 
 fit_gold  <- mcma_fit(filter(dat, is_gold), priors = NULL,
-                      prev_center = PREV_CENTER, prev_re = ~ (1 | es_id))
+                      prev_center = PREV_CENTER, prev_re = ~ (1 | es_id),
+                      iter = ITER, warmup = WARMUP)
 
 # Centre the corrected model's Se/Sp priors at the M8-implied values.
 m6_priors <- update(base_priors, se = m8_sesp$se_mean, sp = m8_sesp$sp_mean)
@@ -380,7 +414,8 @@ m6_priors <- update(base_priors, se = m8_sesp$se_mean, sp = m8_sesp$sp_mean)
 fit_m6 <- mcma_fit(
   data = dat, priors = m6_priors, prev_center = PREV_CENTER,
   prev_re = ~ (1 | es_id), sesp_re = ~ (1 | es_id),
-  correlated_re = TRUE, bounded = TRUE
+  correlated_re = TRUE, bounded = TRUE,
+  iter = ITER, warmup = WARMUP
 )
 ```
 
@@ -404,15 +439,14 @@ prev_table
 ```
 
 ```
-#> model              Prevalence (%)
-#> M1 (Naive)         12.2
-#> Gold-only           2.5
-#> M8 (Joint)          2.7
-#> M6 (M8-informed)    2.2
-#> KWGA (analytic)     2.5
-#>
-#> The 95% CIs of the corrected models overlap one another and the gold-only
-#> anchor in every case, and none of them overlaps the naive estimate.
+#> # A tibble: 5 × 3
+#>   model            `Prevalence (%)` `95% CI`   
+#>   <chr>            <chr>            <chr>      
+#> 1 M1 (Naive)       12.2             [9.6, 15.2]
+#> 2 Gold-only        2.5              [0.9, 5.3] 
+#> 3 M8 (Joint)       2.7              [0.8, 5.6] 
+#> 4 M6 (M8-informed) 2.2              [0.8, 4.4] 
+#> 5 KWGA (analytic)  2.5              [0.2, 5.3] 
 ```
 
 The corrected point estimates range from approximately 2.2% to 2.7%, compared

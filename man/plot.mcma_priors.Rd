@@ -6,7 +6,7 @@
 \usage{
 \method{plot}{mcma_priors}(
   x,
-  bounded = FALSE,
+  bounded = TRUE,
   prev_center = NULL,
   prev_sd = 1.5,
   n_samples = 10000,
