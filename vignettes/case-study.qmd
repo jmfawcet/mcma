@@ -48,9 +48,9 @@ dataset - depression among public safety personnel (police, fire, paramedic,
 correctional, and communications workers) from White et al. (2025) - and
 reproduces the headline result of the accompanying paper:
 
-> A naive pooled prevalence of 12.2% falls to roughly 2.7% once
-> misclassification is modelled, converging with the gold-standard diagnostic
-> interviews and with general-population estimates of major depressive disorder.
+A naive pooled prevalence of 12.2% falls to roughly 2.7% once
+misclassification is modelled, converging with the gold-standard diagnostic
+interviews and with general-population estimates of major depressive disorder.
 
 The workflow:
 
@@ -65,7 +65,8 @@ The workflow:
 
 ```{r, purl = FALSE}
 #| label: libs
-# install.packages("remotes"); remotes::install_github("jmfawcet/mcma")
+# install.packages("remotes")
+# remotes::install_github("jmfawcet/mcma")
 library(mcma)
 library(dplyr)
 library(ggplot2)
@@ -171,7 +172,7 @@ base_priors
 ## Be conservative on specificity for rare disorders
 The single most consequential prior is *Sp*: at low prevalence the observed
 case count is dominated by the false-positive rate `(1 − Sp)`. Over-estimating
-*Sp* produces upward bias in corrected prevalence. When in doubt, err toward a
+*Sp* produces upward bias in corrected prevalence. When in doubt, prefer
 lower, wider *Sp* prior and lean on the Step 3 sensitivity analysis.
 :::
 

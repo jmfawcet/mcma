@@ -6,7 +6,7 @@
 ![R >= 4.1](https://img.shields.io/badge/R-%3E%3D%204.1-1f72aa.svg)
 <!-- badges: end -->
 
-Bayesian misclassification-corrected meta-analysis of disorder prevalence in R. Built on 
+Bayesian misclassification-corrected meta-analysis of disorder prevalence in *R*. Built on 
 [**brms**](https://paul-buerkner.github.io/brms/) and Stan (via `cmdstanr`), `mcma` pools 
 prevalence estimates across studies while modelling the imperfect sensitivity (*Se*) and 
 specificity (*Sp*) of the instruments that produced them, so that screening-based and 

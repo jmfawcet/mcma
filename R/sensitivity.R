@@ -24,9 +24,10 @@
 #'   fits across sessions, or NULL to disable caching.
 #' @param rerun Logical; if `TRUE`, refit and overwrite cached grid models even
 #'   when a cached fit already exists (sets brms `file_refit = "always"`).
-#'   Default `FALSE` reuses any cached fits.
+#'   Default `FALSE` validates cached fits and refits changed models.
 #' @param file_refit Passed to `brms::brm()`. Defaults to `"always"` when
-#'   `rerun = TRUE` and `"never"` otherwise.
+#'   `rerun = TRUE` and `"on_change"` otherwise. See [mcma_fit()] for
+#'   validation rules and the treatment of legacy caches.
 #' @param ... Additional arguments passed to `mcma_fit()`.
 #' @return An S3 object of class `mcma_sensitivity`.
 #' @export
@@ -42,7 +43,7 @@ mcma_sensitivity <- function(data,
                              measure_col   = "measure_id",
                              model_dir     = file.path(tempdir(), "mcma_sensitivity"),
                              rerun         = FALSE,
-                             file_refit    = if (rerun) "always" else "never",
+                             file_refit    = if (rerun) "always" else "on_change",
                              ...) {
 
   # Repeat the corrected fit over candidate prior centres. Each grid row
@@ -224,7 +225,7 @@ mcma_sensitivity_comparison <- function(data,
                                         step_size = NULL,
                                         refresh = 50,
                                         rerun = FALSE,
-                                        file_refit = if (rerun) "always" else "never",
+                                        file_refit = if (rerun) "always" else "on_change",
                                         ...) {
 
   # At each prior setting, estimate separate corrected interview and
@@ -299,7 +300,7 @@ mcma_sensitivity_comparison <- function(data,
 
       # Fit or reload this grid point using an identity link, since the
       # nonlinear formula already yields a probability.
-      fit <- brms::brm(
+      fit <- .mcma_brm(
         formula = formula,
         data    = data,
         family  = stats::binomial(link = "identity"),

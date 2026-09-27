@@ -140,7 +140,16 @@ mcma_formula <- function(bounded       = TRUE,
 #' @param cores Number of cores.
 #' @param backend brms backend.
 #' @param file File path for model caching. Cached RDS files retain the package
-#'   configuration and priors needed by the extraction functions.
+#'   configuration and priors needed by the extraction functions. Reused fits
+#'   keep their stored metadata; the current request does not relabel them.
+#' @param file_refit Cache policy passed to `brms::brm()`: `"on_change"`
+#'   (default) refits when data, priors, or generated Stan code change;
+#'   `"always"` forces a refit; `"never"` reuses an existing cache without
+#'   validating the requested model. An unchecked cache without `mcma_config`
+#'   is rejected: use `"on_change"` to validate it or `"always"` to refit.
+#'   Changes to iterations, warmup, or sampler controls do not trigger
+#'   `"on_change"`; use `"always"` to apply them. A brms upgrade that changes
+#'   generated Stan code can trigger refitting of cached models.
 #' @param refresh Iteration interval for progress printing (0 = silent).
 #' @param step_size Optional initial sampler step size; NULL lets Stan choose it.
 #' @param ... Additional arguments passed to `brms::brm()`.
@@ -170,7 +179,8 @@ mcma_fit <- function(data,
                      backend       = "cmdstanr",
                      file          = NULL,
                      refresh       = 50,
-                     step_size     = NULL, 
+                     step_size     = NULL,
+                     file_refit    = "on_change",
                      ...) {
 
   # Convert the prevalence prior centre to log odds, then choose the
@@ -208,7 +218,7 @@ mcma_fit <- function(data,
 
     # Pass the model to brms/Stan. Warmup tunes the sampler; later iterations
     # supply the posterior draws.
-    fit <- brms::brm(
+    fit <- .mcma_brm(
       formula = formula,
       data    = data,
       family  = stats::binomial(),
@@ -220,6 +230,7 @@ mcma_fit <- function(data,
       backend = backend,
       control = .mcma_sampler_control(adapt_delta, max_treedepth, step_size, backend), 
       file    = file,
+      file_refit = file_refit,
       refresh = refresh,
       ...
     )
@@ -282,7 +293,7 @@ mcma_fit <- function(data,
 
   # The nonlinear formula already calculates a probability, so use the
   # identity link to avoid applying a second logistic transformation.
-  fit <- brms::brm(
+  fit <- .mcma_brm(
     formula = formula,
     data    = data,
     family  = stats::binomial(link = "identity"),
@@ -294,6 +305,7 @@ mcma_fit <- function(data,
     backend = backend,
     control = .mcma_sampler_control(adapt_delta, max_treedepth, step_size, backend), 
     file    = file,
+    file_refit = file_refit,
     refresh = refresh,
     ...
   )
@@ -331,8 +343,8 @@ mcma_fit <- function(data,
 #'   extracted Se/Sp refer to baseline accuracy before these additional
 #'   effects; use [extract_bias()] to summarise the terms themselves. Bounding
 #'   applies to baseline accuracy, not the effective accuracy after adjustment.
-#'   When reusing a cache path across scenarios, pass
-#'   `file_refit = "on_change"` through `...`.
+#'   Reusing a cache path across scenarios is checked by the default
+#'   `file_refit = "on_change"` policy.
 #' @param c,o Fixed interview concealment and additional false-positive
 #'   probabilities, respectively. Each is a scalar or a vector of length
 #'   `nrow(data)`, with values in \[0, 1\]. Zero (the default) removes the term.
@@ -392,6 +404,7 @@ mcma_fit_joint <- function(data,
                            c = 0, o = 0, gamma = 1, delta = 1,
                            c_prior = NULL, o_prior = NULL,      # priors on the concealment / over-diagnosis parameters (NULL = fixed at c / o)
                            step_size = NULL, # optional initial sampler step size
+                           file_refit = "on_change",
                            ...) {
 
   # Use interview studies to anchor prevalence while estimating a shared
@@ -523,7 +536,7 @@ mcma_fit_joint <- function(data,
 
   # Fit all active parameters jointly; brms applies the binomial likelihood
   # to the observation probability constructed above.
-  fit <- brms::brm(
+  fit <- .mcma_brm(
     formula = formula,
     data    = data,
     family  = stats::binomial(link = "identity"),
@@ -535,6 +548,7 @@ mcma_fit_joint <- function(data,
     backend = backend,
     control = .mcma_sampler_control(adapt_delta, max_treedepth, step_size, backend), 
     file    = file,
+    file_refit = file_refit,
     refresh = refresh,
     ...
   )
@@ -592,7 +606,8 @@ mcma_fit_comparison <- function(data,
                                 cores         = 4,
                                 backend       = "cmdstanr",
                                 refresh       = 50,
-                                step_size     = NULL, 
+                                step_size     = NULL,
+                                file_refit    = "on_change",
                                 ...) {
 
   # Estimate separate apparent prevalence levels for interviews and screens.
@@ -636,7 +651,7 @@ mcma_fit_comparison <- function(data,
 
   # Fit apparent positive-count prevalence with the standard binomial logit
   # link; no accuracy correction is applied in this comparison model.
-  fit <- brms::brm(
+  fit <- .mcma_brm(
     formula = formula,
     data    = data,
     family  = stats::binomial(),
@@ -648,6 +663,7 @@ mcma_fit_comparison <- function(data,
     backend = backend,
     control = .mcma_sampler_control(adapt_delta, max_treedepth, step_size, backend), 
     file    = file,
+    file_refit = file_refit,
     refresh = refresh,
     ...
   )
@@ -728,10 +744,40 @@ mcma_fit_comparison <- function(data,
   stats::reformulate(sprintf("(1 | `%s`)", study_col))
 }
 
+.mcma_brm <- function(..., file = NULL, file_refit = "on_change") {
+
+  file_refit <- match.arg(file_refit, c("on_change", "never", "always"))
+
+  # An unchecked legacy fit cannot safely be labelled using today's request.
+  # Read explicit "never" caches here so we can reject missing metadata before
+  # the finalizer attaches anything. Other policies use brms' own checks.
+  if (!is.null(file) && file_refit == "never") {
+    cache_file <- if (grepl("\\.rds$", file, ignore.case = TRUE)) file else paste0(file, ".rds")
+    if (file.exists(cache_file)) {
+      cached <- tryCatch(readRDS(cache_file), error = function(e) NULL)
+      if (inherits(cached, "brmsfit")) {
+        if (is.null(attr(cached, "mcma_config"))) {
+          stop(paste0("Cached fit has no mcma_config; use file_refit = \"on_change\" ",
+                      "to validate it or file_refit = \"always\" to refit."), call. = FALSE)
+        }
+        cached$file <- cache_file
+        return(cached)
+      }
+    }
+  }
+
+  brms::brm(..., file = file, file_refit = file_refit)
+}
+
+
 .mcma_finalize_fit <- function(fit, config, priors = NULL, file = NULL, ...) {
 
-  # brms saves before returning, so add our metadata and update that cache.
-  # Avoid rewriting a large cached fit when its metadata is already current.
+  # Existing metadata describes the saved fit, even if "never" was requested
+  # with different settings. Preserve it and avoid rewriting large caches.
+  if (!is.null(attr(fit, "mcma_config"))) return(fit)
+
+  # A new fit, or a legacy cache validated by "on_change", can be annotated.
+  # brms saves before returning, so persist that metadata alongside the fit.
   changed <- !identical(attr(fit, "mcma_config"), config) ||
     !identical(attr(fit, "mcma_priors"), priors)
   attr(fit, "mcma_config") <- config

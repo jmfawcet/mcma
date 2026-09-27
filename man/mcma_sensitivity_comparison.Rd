@@ -28,7 +28,7 @@ mcma_sensitivity_comparison(
   step_size = NULL,
   refresh = 50,
   rerun = FALSE,
-  file_refit = if (rerun) "always" else "never",
+  file_refit = if (rerun) "always" else "on_change",
   ...
 )
 }
@@ -83,10 +83,11 @@ fits across sessions, or NULL to disable caching.}
 
 \item{rerun}{Logical; if \code{TRUE}, refit and overwrite cached grid models even
 when a cached fit already exists (sets brms \code{file_refit = "always"}).
-Default \code{FALSE} reuses any cached fits.}
+Default \code{FALSE} validates cached fits and refits changed models.}
 
 \item{file_refit}{Passed to \code{brms::brm()}. Defaults to \code{"always"} when
-\code{rerun = TRUE} and \code{"never"} otherwise.}
+\code{rerun = TRUE} and \code{"on_change"} otherwise. See \code{\link[=mcma_fit]{mcma_fit()}} for
+validation rules and the treatment of legacy caches.}
 
 \item{...}{Additional arguments passed to \code{brms::brm()} at each grid point.}
 }

@@ -33,6 +33,7 @@ mcma_fit_joint(
   c_prior = NULL,
   o_prior = NULL,
   step_size = NULL,
+  file_refit = "on_change",
   ...
 )
 }
@@ -99,6 +100,15 @@ and a non-zero fixed value cannot both be given for the same term.}
 
 \item{step_size}{Optional initial sampler step size; NULL lets Stan choose it.}
 
+\item{file_refit}{Cache policy passed to \code{brms::brm()}: \code{"on_change"}
+(default) refits when data, priors, or generated Stan code change;
+\code{"always"} forces a refit; \code{"never"} reuses an existing cache without
+validating the requested model. An unchecked cache without \code{mcma_config}
+is rejected: use \code{"on_change"} to validate it or \code{"always"} to refit.
+Changes to iterations, warmup, or sampler controls do not trigger
+\code{"on_change"}; use \code{"always"} to apply them. A brms upgrade that changes
+generated Stan code can trigger refitting of cached models.}
+
 \item{...}{Additional arguments passed to \code{brms::brm()}.}
 }
 \value{
@@ -127,6 +137,6 @@ retains the existing near-perfect specification. Screening priors and
 extracted Se/Sp refer to baseline accuracy before these additional
 effects; use \code{\link[=extract_bias]{extract_bias()}} to summarise the terms themselves. Bounding
 applies to baseline accuracy, not the effective accuracy after adjustment.
-When reusing a cache path across scenarios, pass
-\code{file_refit = "on_change"} through \code{...}.
+Reusing a cache path across scenarios is checked by the default
+\code{file_refit = "on_change"} policy.
 }
