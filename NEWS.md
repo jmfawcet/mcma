@@ -1,5 +1,12 @@
 # mcma 0.1.1
 
+* Fitters and sensitivity grids now default to `file_refit = "on_change"`,
+  validating cached models before reuse. Reused fits preserve their stored
+  configuration and priors without rewriting the cache; `"never"` rejects
+  legacy caches missing `mcma_config`. Use `"always"` to change sampling
+  settings. A brms upgrade that changes generated Stan code can trigger
+  refitting of all affected cached case-study models.
+
 * Kernel-weighted grid averaging (KWGA) is now corrected. `mcma_kwga()` scores the
   unclamped Rogan-Gladen correction of each screening draw against the
   gold-standard draws, so an accuracy pair that implies a negative prevalence is
